@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import { Toaster } from '@/components/ui/toaster';
 import { AppProviders } from '@/components/providers/app-providers';
+import { getProfile } from '@/lib/get-profile';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -26,15 +27,16 @@ export const metadata: Metadata = {
     'Discover learning opportunities, build new skills, and track your professional development in one place.',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const profile = await getProfile();
   return (
     <html lang="en" className={`${inter.variable} ${display.variable}`}>
       <body className="font-sans">
-        <AppProviders>{children}</AppProviders>
+        <AppProviders profile={profile}>{children}</AppProviders>
       </body>
     </html>
   );

@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { PortableText, type PortableTextBlock } from 'next-sanity';
 import {
   Clock,
   Layers,
@@ -15,19 +16,121 @@ import { CategoryBadge } from '@/components/courses/category-badge';
 import { DifficultyBadge } from '@/components/courses/difficulty-badge';
 import { LessonListItem } from '@/components/learning/lesson-list-item';
 import { EnrollButton } from '@/components/courses/enroll-button';
-import { sampleCourses, getCourseBySlug } from '@/data/sample-courses';
+import { client } from '@/lib/sanity/client';
+import { urlFor } from '@/lib/sanity/image';
+import { COURSE_DETAIL_QUERY, COURSE_SLUGS_QUERY } from '@/lib/sanity/queries';
+import type { Course } from '@/types';
 
-export function generateStaticParams() {
-  return sampleCourses.map((c) => ({ slug: c.slug }));
+// Re-fetch from Sanity at most once a minute.
+const REVALIDATE = { next: { revalidate: 60 } };
+
+const LEVEL_LABELS = {
+  beginner: 'Beginner',
+  intermediate: 'Intermediate',
+  advanced: 'Advanced',
+} as const;
+
+type SanityLesson = {
+  _id: string;
+  title: string;
+  slug: string;
+  type: 'video' | 'article';
+  durationMinutes?: number;
+} | null; // null = broken reference (e.g. lesson not published yet)
+
+type SanityCourseDetail = {
+  _id: string;
+  title: string;
+  slug: string;
+  shortDescription: string;
+  description?: PortableTextBlock[];
+  learningOutcomes?: string[];
+  image?: Parameters<typeof urlFor>[0];
+  level?: keyof typeof LEVEL_LABELS;
+  featured?: boolean;
+  instructorName?: string;
+  instructorTitle?: string;
+  instructorAvatar?: Parameters<typeof urlFor>[0];
+  category?: string;
+  lessonCount?: number;
+  totalMinutes?: number | null;
+  modules?: { title: string; lessons?: SanityLesson[] }[];
+};
+
+function formatMinutes(total?: number | null) {
+  if (!total) return undefined;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
-export default function CourseDetailPage({
+async function getCourse(slug: string): Promise<Course | null> {
+  const c = await client.fetch<SanityCourseDetail | null>(
+    COURSE_DETAIL_QUERY,
+    { slug },
+    REVALIDATE,
+  );
+  if (!c) return null;
+
+  return {
+    id: c._id,
+    slug: c.slug,
+    title: c.title,
+    description: c.shortDescription,
+    longDescription: c.description,
+    category: c.category ?? 'Uncategorised',
+    thumbnail: c.image
+      ? urlFor(c.image).width(1200).height(675).url()
+      : undefined,
+    instructor: {
+      name: c.instructorName ?? 'Unknown instructor',
+      title: c.instructorTitle,
+      avatar: c.instructorAvatar
+        ? urlFor(c.instructorAvatar).width(96).height(96).url()
+        : undefined,
+    },
+    difficulty: LEVEL_LABELS[c.level ?? 'beginner'],
+    duration: formatMinutes(c.totalMinutes),
+    objectives: c.learningOutcomes ?? [],
+    featured: c.featured,
+    modules: (c.modules ?? []).map((m) => ({
+      title: m.title,
+      lessons: (m.lessons ?? [])
+        .filter((l): l is NonNullable<SanityLesson> => l !== null)
+        .map((l) => ({
+          id: l._id,
+          slug: l.slug,
+          title: l.title,
+          type: l.type,
+          durationMinutes: l.durationMinutes,
+        })),
+    })),
+  };
+}
+
+export async function generateStaticParams() {
+  const slugs = await client.fetch<{ slug: string }[]>(COURSE_SLUGS_QUERY);
+  return slugs.map((s) => ({ slug: s.slug }));
+}
+
+export default async function CourseDetailPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
-  const course = getCourseBySlug(params.slug);
+  const { slug } = await params;
+  const course = await getCourse(slug);
   if (!course) notFound();
+
+  const lessonCount = course.modules.reduce((n, m) => n + m.lessons.length, 0);
+  // Running lesson number across modules (module 2 continues from module 1).
+  const modules = course.modules.map((m, i) => ({
+    ...m,
+    startIndex: course.modules
+      .slice(0, i)
+      .reduce((n, prev) => n + prev.lessons.length, 0),
+  }));
 
   return (
     <div>
@@ -44,14 +147,16 @@ export default function CourseDetailPage({
 
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:gap-8">
             <div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg border bg-muted">
-              <Image
-                src={course.thumbnail}
-                alt={course.title}
-                fill
-                sizes="(max-width: 1024px) 100vw, 60vw"
-                className="object-cover"
-                priority
-              />
+              {course.thumbnail && (
+                <Image
+                  src={course.thumbnail}
+                  alt={course.title}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 60vw"
+                  className="object-cover"
+                  priority
+                />
+              )}
             </div>
 
             <div className="flex flex-col">
@@ -63,41 +168,52 @@ export default function CourseDetailPage({
                 {course.title}
               </h1>
               <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-                {course.longDescription}
+                {course.description}
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock className="h-4 w-4" />
-                  {course.duration}
-                </span>
+                {course.duration && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="h-4 w-4" />
+                    {course.duration}
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-1.5">
                   <Layers className="h-4 w-4" />
-                  {course.lessons.length} lessons
+                  {lessonCount} lessons
                 </span>
               </div>
 
               <div className="mt-5 flex items-center gap-3 rounded-lg border border-border bg-card p-3">
                 <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-muted">
-                  <Image
-                    src={course.instructor.avatar}
-                    alt={course.instructor.name}
-                    fill
-                    sizes="40px"
-                    className="object-cover"
-                  />
+                  {course.instructor.avatar ? (
+                    <Image
+                      src={course.instructor.avatar}
+                      alt={course.instructor.name}
+                      fill
+                      sizes="40px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-muted-foreground">
+                      {course.instructor.name.charAt(0).toUpperCase()}
+                    </span>
+                  )}
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">
                     {course.instructor.name}
                   </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {course.instructor.title}
-                  </p>
+                  {course.instructor.title && (
+                    <p className="truncate text-xs text-muted-foreground">
+                      {course.instructor.title}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="mt-5">
+                {/* Enroll with course.id (the Sanity _id) in PostgreSQL */}
                 <EnrollButton course={course} />
               </div>
             </div>
@@ -105,33 +221,49 @@ export default function CourseDetailPage({
         </PageContainer>
       </div>
 
-      {/* Body: objectives + lessons */}
+      {/* Body: about + objectives + lessons */}
       <PageContainer className="py-8 sm:py-10">
         <div className="grid gap-8 lg:grid-cols-[1fr_1.5fr] lg:gap-10">
-          {/* Objectives */}
           <div className="space-y-6">
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-primary" />
+            {course.longDescription && course.longDescription.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
                   <h2 className="font-display text-base font-semibold text-foreground">
-                    Learning objectives
+                    About this course
                   </h2>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2.5">
-                  {course.objectives.map((obj, i) => (
-                    <li key={i} className="flex gap-2.5 text-sm">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary">
-                        {i + 1}
-                      </span>
-                      <span className="text-foreground/90">{obj}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-foreground/90 [&_h2]:mt-4 [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:font-semibold [&_li]:mb-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5">
+                    <PortableText value={course.longDescription} />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {course.objectives.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-4 w-4 text-primary" />
+                    <h2 className="font-display text-base font-semibold text-foreground">
+                      Learning objectives
+                    </h2>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2.5">
+                    {course.objectives.map((obj, i) => (
+                      <li key={i} className="flex gap-2.5 text-sm">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary">
+                          {i + 1}
+                        </span>
+                        <span className="text-foreground/90">{obj}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
 
             <Link
               href="/courses"
@@ -142,7 +274,7 @@ export default function CourseDetailPage({
             </Link>
           </div>
 
-          {/* Lessons */}
+          {/* Lessons, grouped by module */}
           <div>
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -152,18 +284,36 @@ export default function CourseDetailPage({
                 </h2>
               </div>
               <span className="text-xs text-muted-foreground">
-                {course.lessons.length} lessons · {course.duration}
+                {lessonCount} lessons
+                {course.duration && ` · ${course.duration}`}
               </span>
             </div>
-            <div className="space-y-1 rounded-lg border border-border bg-card p-2">
-              {course.lessons.map((lesson, i) => (
-                <LessonListItem
-                  key={lesson.id}
-                  href={`/learn/${course.slug}/${lesson.slug}`}
-                  title={lesson.title}
-                  duration={lesson.duration}
-                  index={i + 1}
-                />
+
+            <div className="space-y-4">
+              {modules.map((module) => (
+                <div
+                  key={module.title}
+                  className="rounded-lg border border-border bg-card p-2"
+                >
+                  <p className="px-2 pb-1 pt-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {module.title}
+                  </p>
+                  <div className="space-y-1">
+                    {module.lessons.map((lesson, i) => (
+                      <LessonListItem
+                        key={lesson.id}
+                        href={`/learn/${course.slug}/${lesson.slug}`}
+                        title={lesson.title}
+                        duration={
+                          lesson.durationMinutes
+                            ? `${lesson.durationMinutes} min`
+                            : undefined
+                        }
+                        index={module.startIndex + i + 1}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>

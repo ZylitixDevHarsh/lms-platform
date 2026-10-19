@@ -8,8 +8,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+
 import { sampleCourses, previewUser } from '@/data/sample-courses';
 import type { Course, Enrollment, PreviewUser } from '@/types';
+import type { AuthProfile } from '@/lib/get-profile';
 
 interface LearningContextValue {
   user: PreviewUser;
@@ -34,6 +36,11 @@ interface LearningContextValue {
   signOut: () => void;
 }
 
+interface LearningProviderProps {
+  children: ReactNode;
+  initialUser: AuthProfile | null;
+}
+
 const defaultEnrollments: Enrollment[] = [
   {
     courseId: 'c4',
@@ -51,14 +58,33 @@ const LearningContext = createContext<LearningContextValue | undefined>(
   undefined
 );
 
-export function LearningProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+export function LearningProvider({
+  children,
+  initialUser,
+}: LearningProviderProps) {
+  // Use the Auth0 profile when authenticated; otherwise, use demo data.
+  const user: PreviewUser = initialUser
+    ? {
+      id: initialUser.id,
+      name: initialUser.name,
+      email: initialUser.email,
+      role: initialUser.role,
+      initials: initialUser.initials,
+    }
+    : previewUser;
+
+  const isAuthenticated = initialUser !== null;
+
   const [enrollments, setEnrollments] =
     useState<Enrollment[]>(defaultEnrollments);
 
   const enrollmentsByCourse = useMemo(() => {
     const map: Record<string, Enrollment> = {};
-    for (const e of enrollments) map[e.courseId] = e;
+
+    for (const enrollment of enrollments) {
+      map[enrollment.courseId] = enrollment;
+    }
+
     return map;
   }, [enrollments]);
 
@@ -69,7 +95,10 @@ export function LearningProvider({ children }: { children: ReactNode }) {
 
   const enroll = useCallback((courseId: string) => {
     setEnrollments((prev) => {
-      if (prev.some((e) => e.courseId === courseId)) return prev;
+      if (prev.some((e) => e.courseId === courseId)) {
+        return prev;
+      }
+
       return [
         ...prev,
         {
@@ -82,7 +111,9 @@ export function LearningProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const unenroll = useCallback((courseId: string) => {
-    setEnrollments((prev) => prev.filter((e) => e.courseId !== courseId));
+    setEnrollments((prev) =>
+      prev.filter((e) => e.courseId !== courseId)
+    );
   }, []);
 
   const isLessonComplete = useCallback(
@@ -97,17 +128,25 @@ export function LearningProvider({ children }: { children: ReactNode }) {
     (courseId: string, lessonId: string) => {
       setEnrollments((prev) => {
         const existing = prev.find((e) => e.courseId === courseId);
+
         if (existing) {
-          if (existing.completedLessonIds.includes(lessonId)) return prev;
+          if (existing.completedLessonIds.includes(lessonId)) {
+            return prev;
+          }
+
           return prev.map((e) =>
             e.courseId === courseId
               ? {
-                  ...e,
-                  completedLessonIds: [...e.completedLessonIds, lessonId],
-                }
+                ...e,
+                completedLessonIds: [
+                  ...e.completedLessonIds,
+                  lessonId,
+                ],
+              }
               : e
           );
         }
+
         return [
           ...prev,
           {
@@ -127,11 +166,11 @@ export function LearningProvider({ children }: { children: ReactNode }) {
         prev.map((e) =>
           e.courseId === courseId
             ? {
-                ...e,
-                completedLessonIds: e.completedLessonIds.filter(
-                  (id) => id !== lessonId
-                ),
-              }
+              ...e,
+              completedLessonIds: e.completedLessonIds.filter(
+                (id) => id !== lessonId
+              ),
+            }
             : e
         )
       );
@@ -143,9 +182,13 @@ export function LearningProvider({ children }: { children: ReactNode }) {
     (courseId: string) => {
       const course = sampleCourses.find((c) => c.id === courseId);
       const total = course?.lessons.length ?? 0;
-      const completed = enrollmentsByCourse[courseId]?.completedLessonIds
-        .length ?? 0;
-      const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+      const completed =
+        enrollmentsByCourse[courseId]?.completedLessonIds.length ?? 0;
+
+      const percent =
+        total > 0 ? Math.round((completed / total) * 100) : 0;
+
       return { completed, total, percent };
     },
     [enrollmentsByCourse]
@@ -163,21 +206,35 @@ export function LearningProvider({ children }: { children: ReactNode }) {
     () =>
       enrollments.filter((e) => {
         const course = sampleCourses.find((c) => c.id === e.courseId);
-        return course && e.completedLessonIds.length === course.lessons.length;
+
+        return (
+          course !== undefined &&
+          e.completedLessonIds.length === course.lessons.length
+        );
       }).length,
     [enrollments]
   );
 
   const totalLessonsCompleted = useMemo(
-    () => enrollments.reduce((sum, e) => sum + e.completedLessonIds.length, 0),
+    () =>
+      enrollments.reduce(
+        (sum, e) => sum + e.completedLessonIds.length,
+        0
+      ),
     [enrollments]
   );
 
-  const signIn = useCallback(() => setIsAuthenticated(true), []);
-  const signOut = useCallback(() => setIsAuthenticated(false), []);
+  // Auth0 handles the actual sign-in and sign-out flows.
+  const signIn = useCallback(() => {
+    window.location.assign('/auth/login');
+  }, []);
+
+  const signOut = useCallback(() => {
+    window.location.assign('/auth/logout');
+  }, []);
 
   const value: LearningContextValue = {
-    user: previewUser,
+    user,
     isAuthenticated,
     enrollments,
     enrollmentsByCourse,
@@ -204,7 +261,10 @@ export function LearningProvider({ children }: { children: ReactNode }) {
 
 export function useLearning() {
   const ctx = useContext(LearningContext);
-  if (!ctx)
+
+  if (!ctx) {
     throw new Error('useLearning must be used within a LearningProvider');
+  }
+
   return ctx;
 }

@@ -1,13 +1,22 @@
 import Link from 'next/link';
 import { GraduationCap } from 'lucide-react';
+import { auth0 } from '@/lib/auth0';
 
-const footerLinks = [
+const baseLinks = [
   { href: '/courses', label: 'Courses' },
   { href: '/dashboard', label: 'My Learning' },
-  { href: '/login', label: 'Sign In' },
 ];
 
-export function SiteFooter() {
+
+export async function SiteFooter() {
+
+  const session = await auth0.getSession();
+  const authLink = session
+    ? { href: '/auth/logout', label: 'Sign Out' }
+    : { href: '/auth/login', label: 'Sign In' };
+
+  const footerLinks = [...baseLinks, authLink];
+
   return (
     <footer className="border-t border-border bg-secondary/40">
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -21,9 +30,9 @@ export function SiteFooter() {
             </span>
           </div>
           <nav className="flex flex-wrap gap-x-6 gap-y-2">
-            {footerLinks.map((link) => (
+            {footerLinks.map((link, i) => (
               <Link
-                key={link.href}
+                key={i}
                 href={link.href}
                 className="text-sm text-muted-foreground transition-colors hover:text-foreground"
               >

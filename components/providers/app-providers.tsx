@@ -2,10 +2,11 @@
 
 import { LearningProvider } from '@/components/providers/learning-provider';
 import { Toaster } from '@/components/ui/toaster';
+import { AuthProfile } from '@/lib/get-profile';
 
-export function AppProviders({ children }: { children: React.ReactNode }) {
+export function AppProviders({ children, profile }: { children: React.ReactNode, profile: AuthProfile | null }) {
   return (
-    <LearningProvider>
+    <LearningProvider initialUser={profile}>
       {children}
       <Toaster />
     </LearningProvider>

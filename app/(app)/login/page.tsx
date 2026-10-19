@@ -1,7 +1,9 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ArrowRight, GraduationCap, ShieldCheck, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/layout/page-container';
+import { auth0 } from '@/lib/auth0';
 
 const trustPoints = [
   { icon: ShieldCheck, label: 'Single sign-on via Auth0' },
@@ -9,7 +11,27 @@ const trustPoints = [
   { icon: GraduationCap, label: 'Access to all enrolled courses' },
 ];
 
-export default function LoginPage() {
+// Only allow same-site relative paths to prevent open-redirect attacks.
+function getSafeReturnTo(value?: string) {
+  if (value && value.startsWith('/') && !value.startsWith('//')) return value;
+  return '/dashboard';
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
+  const { returnTo: rawReturnTo } = await searchParams;
+  const returnTo = getSafeReturnTo(rawReturnTo);
+
+  // Already signed in? Skip the login screen.
+  const session = await auth0.getSession();
+  if (session) redirect(returnTo);
+
+  const loginHref = `/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
+  const signupHref = `${loginHref}&screen_hint=signup`;
+
   return (
     <div className="flex min-h-[calc(100dvh-4rem)] items-center justify-center bg-secondary/30 px-4 py-10">
       <PageContainer size="narrow" className="!max-w-md">
@@ -28,15 +50,23 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-3">
+            {/* Plain <a>, not next/link: /auth/login is handled by the Auth0
+                middleware and must be a full page navigation, not a client
+                transition or prefetch. */}
             <Button size="lg" className="w-full" asChild>
-              <Link href="/dashboard">
+              <a href={loginHref}>
                 Continue with Auth0
                 <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Link>
+              </a>
             </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Authentication is a placeholder in this preview. Connecting Auth0
-              is a Phase 4 integration step.
+            <p className="text-center text-sm text-muted-foreground">
+              New here?{' '}
+              <a
+                href={signupHref}
+                className="font-medium text-foreground hover:underline"
+              >
+                Create an account
+              </a>
             </p>
           </div>
 

@@ -33,7 +33,7 @@ export interface Course {
   slug: string;
   title: string;
   description: string;
-  longDescription: string;
+  longDescription?: string;
   category: Category;
   thumbnail: string;
   instructor: {
@@ -42,9 +42,9 @@ export interface Course {
     avatar: string;
   };
   difficulty: Difficulty;
-  duration: string;
-  objectives: string[];
-  lessons: Lesson[];
+  duration?: string;
+  objectives?: string[];
+  lessons?: Lesson[];
   featured?: boolean;
 }
 

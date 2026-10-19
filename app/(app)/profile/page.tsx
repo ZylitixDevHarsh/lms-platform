@@ -99,8 +99,8 @@ export default function ProfilePage() {
           className="text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={() => signOut()}
         >
-          <LogOut className="mr-2 h-4 w-4" />
-          Sign out (placeholder)
+          <LogOut className="mr-2 h-4 w-4" onClick={signOut} />
+          Sign out
         </Button>
       </div>
     </PageContainer>

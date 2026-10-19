@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Surfaces */
+    --background: 0 0% 100%;
+    --foreground: 215 32% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 32% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 32% 12%;
+
+    /* Brand — restrained teal */
+    --primary: 188 80% 32%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 186 60% 94%;
+
+    /* Secondary — soft neutral */
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 215 32% 18%;
+
+    /* Muted */
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 14% 45%;
+
+    /* Accent — warm sand for subtle highlights */
+    --accent: 40 60% 96%;
+    --accent-foreground: 215 32% 18%;
+
+    /* Semantic */
+    --success: 152 56% 38%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 148 60% 94%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-soft: 40 90% 95%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 90%;
+    --input: 210 20% 88%;
+    --ring: 188 80% 32%;
+
+    --chart-1: 188 80% 32%;
+    --chart-2: 152 56% 38%;
+    --chart-3: 215 32% 40%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 280 40% 55%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 215 32% 8%;
+    --foreground: 210 20% 96%;
+    --card: 215 30% 11%;
+    --card-foreground: 210 20% 96%;
+    --popover: 215 30% 11%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 186 70% 42%;
+    --primary-foreground: 215 32% 8%;
+    --primary-soft: 188 40% 20%;
+    --secondary: 215 28% 16%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 215 28% 16%;
+    --muted-foreground: 210 12% 62%;
+    --accent: 40 30% 20%;
+    --accent-foreground: 210 20% 96%;
+    --success: 152 56% 48%;
+    --success-foreground: 215 32% 8%;
+    --success-soft: 148 40% 20%;
+    --warning: 38 92% 58%;
+    --warning-foreground: 215 32% 8%;
+    --warning-soft: 40 50% 22%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 215 24% 22%;
+    --input: 215 24% 24%;
+    --ring: 186 70% 42%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    @apply bg-primary-soft text-primary;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+  .container-narrow {
+    @apply mx-auto w-full max-w-3xl px-4 sm:px-6;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .prose-learn {
+    @apply text-[15px] leading-[1.7] text-foreground/90;
+  }
+  .prose-learn h2 {
+    @apply mt-8 mb-3 text-xl font-semibold tracking-tight text-foreground;
+  }
+  .prose-learn h3 {
+    @apply mt-6 mb-2 text-lg font-semibold tracking-tight text-foreground;
+  }
+  .prose-learn p {
+    @apply mb-4;
+  }
+  .prose-learn ul {
+    @apply mb-4 ml-5 list-disc space-y-1.5;
+  }
+  .prose-learn ol {
+    @apply mb-4 ml-5 list-decimal space-y-1.5;
+  }
+  .prose-learn a {
+    @apply font-medium text-primary underline underline-offset-2 hover:text-primary/80;
+  }
+  .prose-learn blockquote {
+    @apply my-4 border-l-2 border-primary/40 pl-4 italic text-muted-foreground;
+  }
+  .prose-learn code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[13px];
+  }
+}

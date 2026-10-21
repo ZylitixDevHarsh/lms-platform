@@ -9,6 +9,7 @@ import { SearchInput } from '@/components/courses/search-input';
 import { FilterChips } from '@/components/courses/filter-chips';
 import { EmptyState } from '@/components/common/empty-state';
 import { Button } from '@/components/ui/button';
+import { useLearning } from '@/components/providers/learning-provider';
 import { DIFFICULTIES, type Course, type Difficulty } from '@/types';
 
 type CategoryFilter = string;
@@ -24,6 +25,7 @@ export function CoursesView({
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('All');
   const [difficulty, setDifficulty] = useState<DifficultyFilter>('All');
+  const { isEnrolled, getProgress } = useLearning();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -107,7 +109,15 @@ export function CoursesView({
       </div>
 
       {filtered.length > 0 ? (
-        <CourseGrid courses={filtered} className="mt-5" />
+        <CourseGrid
+          courses={filtered}
+          className="mt-5"
+          progressByCourse={Object.fromEntries(
+            filtered
+              .filter((c) => isEnrolled(c.id) && getProgress(c.id).total > 0)
+              .map((c) => [c.id, getProgress(c.id)]),
+          )}
+        />
       ) : (
         <EmptyState
           className="mt-5"

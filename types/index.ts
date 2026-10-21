@@ -56,6 +56,7 @@ export interface Enrollment {
   courseId: string;
   enrolledAt: string;
   completedLessonIds: string[];
+  lastLessonId?: string | null;
 }
 
 export interface PreviewUser {

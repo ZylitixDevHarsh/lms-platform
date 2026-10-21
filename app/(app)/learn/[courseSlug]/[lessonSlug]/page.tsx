@@ -1,6 +1,6 @@
 import { cache } from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import {
   ChevronRight,
@@ -27,6 +27,9 @@ import {
 } from '@/types';
 import { mapLessonContent } from '@/lib/mappers/lesson-content';
 import { LessonProgress } from '@/components/learning/lesson-progres';
+import { HydrateCourse } from '@/components/learning/hydrate-course';
+import { auth0 } from '@/lib/auth0';
+import { isEnrolled, touchLastLesson } from '@/lib/db/progress';
 
 // Re-fetch from Sanity at most once a minute.
 const REVALIDATE = { next: { revalidate: 60 } };
@@ -131,7 +134,6 @@ const getLessonPageData = cache(
       title: m.title,
       lessons: mapLessons(m.lessons),
     }));
-    console.log('dbug', modules);
     const lessons = modules.flatMap((m) => m.lessons);
 
     const course: Course = {
@@ -208,6 +210,15 @@ export default async function LessonPage({
   const nextLesson = lessons[lessonIndex + 1] ?? null;
   const nextHref = nextLesson ? `/learn/${course.slug}/${nextLesson.slug}` : null;
 
+  const session = await auth0.getSession();
+  if (!session?.user?.sub) {
+    redirect(`/auth/login?returnTo=/learn/${courseSlug}/${lessonSlug}`);
+  }
+  if (!(await isEnrolled(session.user.sub, course.id))) {
+    redirect(`/courses/${course.slug}`);
+  }
+  await touchLastLesson(session.user.sub, course.id, lesson.id);
+
   const isVideo = lesson.type === 'video';
   const videoSource = isVideo && videoUrl ? getVideoSource(videoUrl) : null;
 
@@ -233,6 +244,7 @@ export default async function LessonPage({
         <LessonSidebar course={course} currentLessonSlug={lesson.slug} />
 
         <article className="min-w-0">
+          <HydrateCourse course={course} />
           <div className="mb-4">
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
               {isVideo ? (

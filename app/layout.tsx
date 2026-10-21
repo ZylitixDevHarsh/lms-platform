@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import { AppProviders } from '@/components/providers/app-providers';
 import { getProfile } from '@/lib/get-profile';
+import { loadLearningState } from '@/lib/learning/load-learning-state';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -32,10 +33,11 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const profile = await getProfile();
+  const initial = await loadLearningState(profile);
   return (
     <html lang="en" className={`${inter.variable} ${display.variable}`}>
       <body className="font-sans">
-        <AppProviders profile={profile}>{children}</AppProviders>
+        <AppProviders initial={initial}>{children}</AppProviders>
       </body>
     </html>
   );

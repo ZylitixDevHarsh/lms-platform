@@ -21,13 +21,14 @@ export function LessonSidebar({
   const { isLessonComplete } = useLearning();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const currentIndex = course.lessons.findIndex(
+  const lessons = course.lessons ?? [];
+  const currentIndex = lessons.findIndex(
     (l) => l.slug === currentLessonSlug
   );
 
   const list = (
     <div className="space-y-1 p-2">
-      {course.lessons.map((lesson, i) => {
+      {lessons.map((lesson, i) => {
         const complete = isLessonComplete(course.id, lesson.id);
         const isCurrent = lesson.slug === currentLessonSlug;
         return (
@@ -35,7 +36,11 @@ export function LessonSidebar({
             key={lesson.id}
             href={`/learn/${course.slug}/${lesson.slug}`}
             title={lesson.title}
-            duration={lesson.duration}
+            duration={
+              lesson.durationMinutes
+                ? `${lesson.durationMinutes} min`
+                : undefined
+            }
             index={i + 1}
             status={
               isCurrent ? 'in-progress' : complete ? 'completed' : 'not-started'
@@ -76,7 +81,7 @@ export function LessonSidebar({
         >
           <span className="flex items-center gap-2">
             <ListChecks className="h-4 w-4 text-primary" />
-            Lesson {currentIndex + 1} of {course.lessons.length}
+            Lesson {currentIndex + 1} of {lessons.length}
           </span>
           <ChevronDown
             className={cn(
@@ -114,13 +119,14 @@ export function LessonNavButtons({
   course,
   currentLessonSlug,
 }: LessonSidebarProps) {
-  const currentIndex = course.lessons.findIndex(
+  const lessons = course.lessons ?? [];
+  const currentIndex = lessons.findIndex(
     (l) => l.slug === currentLessonSlug
   );
-  const prev = currentIndex > 0 ? course.lessons[currentIndex - 1] : null;
+  const prev = currentIndex > 0 ? lessons[currentIndex - 1] : null;
   const next =
-    currentIndex < course.lessons.length - 1
-      ? course.lessons[currentIndex + 1]
+    currentIndex < lessons.length - 1
+      ? lessons[currentIndex + 1]
       : null;
 
   return (

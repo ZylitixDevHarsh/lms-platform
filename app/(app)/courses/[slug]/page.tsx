@@ -7,15 +7,16 @@ import {
   Layers,
   Target,
   ChevronRight,
-  BookOpen,
   ArrowLeft,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { CategoryBadge } from '@/components/courses/category-badge';
 import { DifficultyBadge } from '@/components/courses/difficulty-badge';
-import { LessonListItem } from '@/components/learning/lesson-list-item';
 import { EnrollButton } from '@/components/courses/enroll-button';
+import { CourseLessonList } from '@/components/courses/course-lesson-list';
+import { HydrateCourse } from '@/components/learning/hydrate-course';
+import { LessonProgress } from '@/components/learning/lesson-progres';
 import { client } from '@/lib/sanity/client';
 import { urlFor } from '@/lib/sanity/image';
 import { COURSE_DETAIL_QUERY, COURSE_SLUGS_QUERY } from '@/lib/sanity/queries';
@@ -160,16 +161,6 @@ export default async function CourseDetailPage({
     0,
   );
 
-  // Running lesson number across modules (module 2 continues from module 1).
-  // Named `courseModules` / `courseModule` because `module` is reserved by
-  // Next's ESLint rule (@next/next/no-assign-module-variable).
-  const modulesWithOffset = courseModules.map((m, i) => ({
-    ...m,
-    startIndex: courseModules
-      .slice(0, i)
-      .reduce((n, prev) => n + (prev.lessons?.length ?? 0), 0),
-  }));
-
   return (
     <div>
       {/* Hero with thumbnail */}
@@ -252,9 +243,10 @@ export default async function CourseDetailPage({
                 </div>
               </div>
 
-              <div className="mt-5">
-                {/* Enroll with course.id (the Sanity _id) in PostgreSQL */}
+              <div className="mt-5 space-y-3">
+                <HydrateCourse course={course} />
                 <EnrollButton course={course} />
+                <LessonProgress courseId={course.id} />
               </div>
             </div>
           </div>
@@ -314,55 +306,7 @@ export default async function CourseDetailPage({
             </Link>
           </div>
 
-          {/* Lessons, grouped by module */}
-          <div>
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-primary" />
-                <h2 className="font-display text-base font-semibold text-foreground">
-                  Course lessons
-                </h2>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {lessonCount} {lessonCount === 1 ? 'lesson' : 'lessons'}
-                {course.duration && ` · ${course.duration}`}
-              </span>
-            </div>
-
-            {lessonCount === 0 ? (
-              <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                Lessons for this course are coming soon.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {modulesWithOffset.map((courseModule, moduleIndex) => (
-                  <div
-                    key={`${courseModule.title}-${moduleIndex}`}
-                    className="rounded-lg border border-border bg-card p-2"
-                  >
-                    <p className="px-2 pb-1 pt-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {courseModule.title}
-                    </p>
-                    <div className="space-y-1">
-                      {courseModule.lessons?.map((lesson, i) => (
-                        <LessonListItem
-                          key={lesson.id}
-                          href={`/learn/${course.slug}/${lesson.slug}`}
-                          title={lesson.title}
-                          duration={
-                            lesson.durationMinutes
-                              ? `${lesson.durationMinutes} min`
-                              : undefined
-                          }
-                          index={courseModule.startIndex + i + 1}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <CourseLessonList course={course} />
         </div>
       </PageContainer>
     </div>

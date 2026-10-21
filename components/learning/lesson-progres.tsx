@@ -6,7 +6,9 @@ import { useLearning } from '@/components/providers/learning-provider';
 // The lesson page is a server component (it fetches from Sanity), so anything
 // that needs the `useLearning` hook has to live in a client component.
 export function LessonProgress({ courseId }: { courseId: string }) {
-  const { getProgress } = useLearning();
+  const { getProgress, isEnrolled } = useLearning();
+  if (!isEnrolled(courseId)) return null;
+
   const progress = getProgress(courseId);
 
   return (

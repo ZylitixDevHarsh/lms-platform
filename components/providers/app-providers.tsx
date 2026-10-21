@@ -2,35 +2,17 @@
 
 import type { ReactNode } from 'react';
 
-import { LearningProvider, type InitialLearningState } from '@/components/providers/learning-provider';
+import { LearningProvider } from '@/components/providers/learning-provider';
+import type { InitialLearningState } from '@/lib/learning/types';
 import { Toaster } from '@/components/ui/toaster';
-import { previewUser } from '@/data/sample-courses';
-import type { AuthProfile } from '@/lib/get-profile';
 
 export function AppProviders({
   children,
-  profile,
+  initial,
 }: {
   children: ReactNode;
-  profile: AuthProfile | null;
+  initial: InitialLearningState;
 }) {
-  const initial: InitialLearningState = {
-    isAuthenticated: profile !== null,
-    user: profile
-      ? {
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        role: profile.role,
-        initials: profile.initials,
-      }
-      : previewUser,
-    enrolledCourseIds: [],
-    enrollments: [],
-    completedByCourse: {},
-    lessonTotals: {},
-  };
-
   return (
     <LearningProvider initial={initial}>
       {children}

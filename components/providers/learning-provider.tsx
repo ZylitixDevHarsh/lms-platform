@@ -10,42 +10,30 @@ import {
   type ReactNode,
 } from 'react';
 
-import { sampleCourses, previewUser } from '@/data/sample-courses';
+import { previewUser } from '@/data/sample-courses';
 
 import type {
   Course,
   Enrollment,
+  Lesson,
   PreviewUser,
 } from '@/types';
 
-import { enrollAction, setLessonCompleteAction } from '@/lib/db/learning';
+import {
+  enrollAction,
+  setLessonCompleteAction,
+  unenrollAction,
+} from '@/lib/db/learning';
+import type {
+  CourseProgress,
+  InitialLearningState,
+} from '@/lib/learning/types';
+
+export type { CourseProgress, InitialLearningState };
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
 /* -------------------------------------------------------------------------- */
-
-export type InitialLearningState = {
-  isAuthenticated: boolean;
-  user?: PreviewUser;
-
-  // Enrolled course IDs.
-  enrolledCourseIds: string[];
-
-  // Full enrollment records.
-  enrollments?: Enrollment[];
-
-  // { [courseId]: [completed lessonId, ...] }
-  completedByCourse: Record<string, string[]>;
-
-  // { [courseId]: total lessons in the course }
-  lessonTotals: Record<string, number>;
-};
-
-export type CourseProgress = {
-  completed: number;
-  total: number;
-  percent: number;
-};
 
 type LearningContextValue = {
   // Authentication.
@@ -60,9 +48,11 @@ type LearningContextValue = {
   enrolledCourseIds: string[];
   enrolledCourses: Course[];
 
-  enroll: (courseId: string) => Promise<boolean>;
+  enroll: (courseId: string, course?: Course) => Promise<boolean>;
   unenroll: (courseId: string) => Promise<boolean>;
   isEnrolled: (courseId: string) => boolean;
+  registerCourse: (course: Course) => void;
+  getResumeLesson: (course: Course) => Lesson | undefined;
 
   // Lesson progress.
   getProgress: (courseId: string) => CourseProgress;
@@ -103,12 +93,22 @@ function uniqueIds(ids: string[]): string[] {
 function createEnrollment(
   courseId: string,
   completedLessonIds: string[] = [],
+  lastLessonId?: string | null,
 ): Enrollment {
   return {
     courseId,
     enrolledAt: new Date().toISOString().slice(0, 10),
     completedLessonIds,
+    lastLessonId,
   };
+}
+
+function coursesToMap(courses: Course[] | undefined): Record<string, Course> {
+  const map: Record<string, Course> = {};
+  for (const course of courses ?? []) {
+    map[course.id] = course;
+  }
+  return map;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -140,6 +140,18 @@ export function LearningProvider({
     () => initial.completedByCourse,
   );
 
+  const [catalog, setCatalog] = useState<Record<string, Course>>(() =>
+    coursesToMap(initial.enrolledCourses),
+  );
+
+  const [lessonTotals, setLessonTotals] = useState<Record<string, number>>(
+    () => initial.lessonTotals,
+  );
+
+  const [lastLessonByCourse, setLastLessonByCourse] = useState<
+    Record<string, string>
+  >(() => initial.lastLessonByCourse ?? {});
+
   // Prevent duplicate concurrent requests for the same operation.
   const pendingEnrollments = useRef(new Set<string>());
   const pendingUnenrollments = useRef(new Set<string>());
@@ -169,16 +181,30 @@ export function LearningProvider({
     [enrolled],
   );
 
+  const registerCourse = useCallback((course: Course) => {
+    setCatalog((prev) =>
+      prev[course.id] ? prev : { ...prev, [course.id]: course },
+    );
+    const total = course.lessons?.length ?? 0;
+    if (total > 0) {
+      setLessonTotals((prev) =>
+        prev[course.id] === total ? prev : { ...prev, [course.id]: total },
+      );
+    }
+  }, []);
+
   /* ------------------------------------------------------------------------ */
   /* Enroll                                                                   */
   /* ------------------------------------------------------------------------ */
 
   const enroll = useCallback(
-    async (courseId: string): Promise<boolean> => {
+    async (courseId: string, course?: Course): Promise<boolean> => {
       if (!isAuthenticated) {
         window.location.assign('/auth/login');
         return false;
       }
+
+      if (course) registerCourse(course);
 
       if (pendingEnrollments.current.has(courseId)) {
         return false;
@@ -234,7 +260,7 @@ export function LearningProvider({
         pendingEnrollments.current.delete(courseId);
       }
     },
-    [isAuthenticated, enrolled, enrollments, completed],
+    [isAuthenticated, enrolled, enrollments, completed, registerCourse],
   );
 
   /* ------------------------------------------------------------------------ */
@@ -273,7 +299,7 @@ export function LearningProvider({
       );
 
       try {
-        const result = await enrollAction(courseId);
+        const result = await unenrollAction(courseId);
 
         if (!result.ok) {
           setEnrolled(previousEnrolled);
@@ -335,6 +361,7 @@ export function LearningProvider({
       const previousCompleted = completed;
       const previousEnrolled = enrolled;
       const previousEnrollments = enrollments;
+      const previousLastLesson = lastLessonByCourse;
 
       const updateLocalProgress = (shouldComplete: boolean) => {
         setCompleted((prev) => {
@@ -392,6 +419,11 @@ export function LearningProvider({
             prev.includes(courseId) ? prev : [courseId, ...prev],
           );
         }
+
+        setLastLessonByCourse((prev) => ({
+          ...prev,
+          [courseId]: lessonId,
+        }));
       };
 
       // Optimistically update the UI.
@@ -408,6 +440,7 @@ export function LearningProvider({
           setCompleted(previousCompleted);
           setEnrolled(previousEnrolled);
           setEnrollments(previousEnrollments);
+          setLastLessonByCourse(previousLastLesson);
           return false;
         }
 
@@ -418,13 +451,14 @@ export function LearningProvider({
         setCompleted(previousCompleted);
         setEnrolled(previousEnrolled);
         setEnrollments(previousEnrollments);
+        setLastLessonByCourse(previousLastLesson);
 
         return false;
       } finally {
         pendingLessonUpdates.current.delete(operationKey);
       }
     },
-    [isAuthenticated, enrolled, completed, enrollments],
+    [isAuthenticated, enrolled, completed, enrollments, lastLessonByCourse],
   );
 
   const markLessonComplete = useCallback(
@@ -445,7 +479,7 @@ export function LearningProvider({
 
   const getProgress = useCallback(
     (courseId: string): CourseProgress => {
-      const total = initial.lessonTotals[courseId] ?? 0;
+      const total = lessonTotals[courseId] ?? 0;
       const completedCount = completed[courseId]?.length ?? 0;
 
       // Guard against invalid or stale lesson IDs.
@@ -462,7 +496,21 @@ export function LearningProvider({
         percent,
       };
     },
-    [completed, initial.lessonTotals],
+    [completed, lessonTotals],
+  );
+
+  const getResumeLesson = useCallback(
+    (course: Course): Lesson | undefined => {
+      const lessons = course.lessons ?? [];
+      const done = new Set(completed[course.id] ?? []);
+      const lastId = lastLessonByCourse[course.id];
+      if (lastId) {
+        const last = lessons.find((lesson) => lesson.id === lastId);
+        if (last && !done.has(last.id)) return last;
+      }
+      return lessons.find((lesson) => !done.has(lesson.id)) ?? lessons[0];
+    },
+    [completed, lastLessonByCourse],
   );
 
   /* ------------------------------------------------------------------------ */
@@ -472,11 +520,9 @@ export function LearningProvider({
   const enrolledCourses = useMemo(
     () =>
       enrolled
-        .map((courseId) =>
-          sampleCourses.find((course) => course.id === courseId),
-        )
+        .map((courseId) => catalog[courseId])
         .filter((course): course is Course => Boolean(course)),
-    [enrolled],
+    [enrolled, catalog],
   );
 
   /* ------------------------------------------------------------------------ */
@@ -486,12 +532,12 @@ export function LearningProvider({
   const completedCoursesCount = useMemo(
     () =>
       enrolled.filter((courseId) => {
-        const total = initial.lessonTotals[courseId] ?? 0;
+        const total = lessonTotals[courseId] ?? 0;
         const completedCount = completed[courseId]?.length ?? 0;
 
         return total > 0 && completedCount >= total;
       }).length,
-    [enrolled, completed, initial.lessonTotals],
+    [enrolled, completed, lessonTotals],
   );
 
   const totalLessonsCompleted = useMemo(
@@ -500,11 +546,11 @@ export function LearningProvider({
         (sum, courseId) =>
           sum + Math.min(
             completed[courseId]?.length ?? 0,
-            initial.lessonTotals[courseId] ?? 0,
+            lessonTotals[courseId] ?? 0,
           ),
         0,
       ),
-    [enrolled, completed, initial.lessonTotals],
+    [enrolled, completed, lessonTotals],
   );
 
   /* ------------------------------------------------------------------------ */
@@ -538,6 +584,8 @@ export function LearningProvider({
       enroll,
       unenroll,
       isEnrolled,
+      registerCourse,
+      getResumeLesson,
 
       getProgress,
       isLessonComplete,
@@ -559,6 +607,8 @@ export function LearningProvider({
       enroll,
       unenroll,
       isEnrolled,
+      registerCourse,
+      getResumeLesson,
       getProgress,
       isLessonComplete,
       markLessonComplete,

@@ -40,14 +40,43 @@ export async function isEnrolled(userId: string, courseId: string): Promise<bool
   return (rowCount ?? 0) > 0;
 }
 
-export async function getEnrolledCourseIds(userId: string): Promise<string[]> {
-  const { rows } = await pool.query<{ course_id: string }>(
-    `SELECT course_id FROM enrollments
+export type EnrollmentRecord = {
+  courseId: string;
+  enrolledAt: string;
+  lastLessonId: string | null;
+};
+
+export async function getEnrollmentRecords(
+  userId: string,
+): Promise<EnrollmentRecord[]> {
+  const { rows } = await pool.query<{
+    course_id: string;
+    enrolled_at: Date;
+    last_lesson_id: string | null;
+  }>(
+    `SELECT course_id, enrolled_at, last_lesson_id
+     FROM enrollments
      WHERE user_id = $1
      ORDER BY COALESCE(last_accessed_at, enrolled_at) DESC`,
     [userId],
   );
-  return rows.map((r) => r.course_id);
+  return rows.map((r) => ({
+    courseId: r.course_id,
+    enrolledAt: new Date(r.enrolled_at).toISOString().slice(0, 10),
+    lastLessonId: r.last_lesson_id,
+  }));
+}
+
+export async function getEnrolledCourseIds(userId: string): Promise<string[]> {
+  const records = await getEnrollmentRecords(userId);
+  return records.map((r) => r.courseId);
+}
+
+export async function unenroll(userId: string, courseId: string): Promise<void> {
+  await pool.query(
+    `DELETE FROM enrollments WHERE user_id = $1 AND course_id = $2`,
+    [userId, courseId],
+  );
 }
 
 export async function getCompletedLessonIds(

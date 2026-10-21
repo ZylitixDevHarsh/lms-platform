@@ -58,6 +58,35 @@ export const COURSE_DETAIL_QUERY = groq`
   }
 `;
 
+// Enrolled courses on the dashboard: Sanity content keyed by PostgreSQL course_id.
+export const COURSES_BY_IDS_QUERY = groq`
+  *[_type == "course" && _id in $ids]{
+    _id,
+    title,
+    "slug": slug.current,
+    shortDescription,
+    image,
+    level,
+    featured,
+    instructorName,
+    instructorTitle,
+    instructorAvatar,
+    "category": category->title,
+    "lessonCount": count(modules[].lessons[]),
+    "totalMinutes": math::sum(modules[].lessons[]->durationMinutes),
+    modules[]{
+      title,
+      "lessons": lessons[]->{
+        _id,
+        title,
+        "slug": slug.current,
+        type,
+        durationMinutes
+      }
+    }
+  }
+`;
+
 export const FEATURED_COURSE_LIST_QUERY = groq`
   *[_type == "course" && defined(slug.current) && featured == true] | order(title asc) {
     _id,

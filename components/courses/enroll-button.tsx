@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LogIn, Play, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,22 +15,18 @@ interface EnrollButtonProps {
 export function EnrollButton({ course }: EnrollButtonProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
   const {
     isAuthenticated,
     isEnrolled,
     enroll,
     getProgress,
-    markLessonComplete,
+    getResumeLesson,
   } = useLearning();
 
   const enrolled = isEnrolled(course.id);
   const progress = getProgress(course.id);
-  const firstLesson = course.lessons ? course.lessons[0] : [];
-  const resumeLesson =
-    course.lessons?.find((l, i) => {
-      const completed = enrolled && i < progress.completed;
-      return !completed;
-    }) ?? firstLesson;
+  const resumeLesson = getResumeLesson(course);
 
   if (!isAuthenticated) {
     return (
@@ -41,16 +38,35 @@ export function EnrollButton({ course }: EnrollButtonProps) {
   }
 
   if (!enrolled) {
-    const handleEnroll = () => {
-      enroll(course.id);
+    const handleEnroll = async () => {
+      setBusy(true);
+      const ok = await enroll(course.id, course);
+      setBusy(false);
+      if (!ok) {
+        toast({
+          title: 'Could not enroll',
+          description: 'Please try again in a moment.',
+          variant: 'destructive',
+        });
+        return;
+      }
       toast({
         title: 'Enrolled successfully',
         description: `${course.title} has been added to your learning dashboard.`,
       });
     };
     return (
-      <Button size="lg" className="w-full sm:w-auto" onClick={handleEnroll}>
-        <Play className="mr-2 h-4 w-4" />
+      <Button
+        size="lg"
+        className="w-full sm:w-auto"
+        onClick={handleEnroll}
+        disabled={busy}
+      >
+        {busy ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <Play className="mr-2 h-4 w-4" />
+        )}
         Enroll in Course
       </Button>
     );
@@ -69,9 +85,11 @@ export function EnrollButton({ course }: EnrollButtonProps) {
     <Button
       size="lg"
       className="w-full sm:w-auto"
-      onClick={() =>
-        router.push(`/learn/${course.slug}/${resumeLesson.slug}`)
-      }
+      onClick={() => {
+        if (!resumeLesson) return;
+        router.push(`/learn/${course.slug}/${resumeLesson.slug}`);
+      }}
+      disabled={!resumeLesson}
     >
       <Play className="mr-2 h-4 w-4" />
       Continue Learning
@@ -97,22 +115,47 @@ export function MarkCompleteToggle({
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
   const { isLessonComplete, markLessonComplete, markLessonIncomplete } =
     useLearning();
   const complete = isLessonComplete(courseId, lessonId);
 
-  const toggle = () => {
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true);
     if (!complete) {
-      markLessonComplete(courseId, lessonId);
+      const ok = await markLessonComplete(courseId, lessonId);
+      setBusy(false);
+      if (!ok) {
+        toast({
+          title: 'Could not save progress',
+          description: 'Please try again in a moment.',
+          variant: 'destructive',
+        });
+        return;
+      }
       toast({
         title: 'Lesson marked complete',
         description: lessonTitle,
       });
       if (nextHref) {
         setTimeout(() => router.push(nextHref), 400);
+      } else if (isLast) {
+        toast({
+          title: 'Course completed',
+          description: 'Nice work — this course is finished.',
+        });
       }
     } else {
-      markLessonIncomplete(courseId, lessonId);
+      const ok = await markLessonIncomplete(courseId, lessonId);
+      setBusy(false);
+      if (!ok) {
+        toast({
+          title: 'Could not update progress',
+          description: 'Please try again in a moment.',
+          variant: 'destructive',
+        });
+      }
     }
   };
 
@@ -121,9 +164,12 @@ export function MarkCompleteToggle({
       variant={complete ? 'outline' : 'default'}
       size="sm"
       onClick={toggle}
+      disabled={busy}
       className="w-full sm:w-auto"
     >
-      {complete ? (
+      {busy ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      ) : complete ? (
         <>
           <CheckCircle2 className="mr-2 h-4 w-4 text-success" />
           Completed

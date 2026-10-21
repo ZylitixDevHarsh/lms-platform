@@ -6,6 +6,7 @@ import { client } from '@/lib/sanity/client';
 import {
   enroll,
   setLessonComplete,
+  unenroll,
   upsertUser,
 } from '@/lib/db/progress';
 
@@ -49,9 +50,22 @@ export async function enrollAction(courseId: string): Promise<ActionResult> {
 
     await enroll(userId, courseId);
     revalidatePath('/dashboard');
+    revalidatePath('/courses');
     return { ok: true };
   } catch {
     return { ok: false, error: 'Could not enroll. Please try again.' };
+  }
+}
+
+export async function unenrollAction(courseId: string): Promise<ActionResult> {
+  try {
+    const userId = await requireUserId();
+    await unenroll(userId, courseId);
+    revalidatePath('/dashboard');
+    revalidatePath('/courses');
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Could not unenroll. Please try again.' };
   }
 }
 
@@ -68,6 +82,7 @@ export async function setLessonCompleteAction(
 
     await setLessonComplete(userId, courseId, lessonId, complete);
     revalidatePath('/dashboard');
+    revalidatePath('/courses');
     return { ok: true };
   } catch {
     return { ok: false, error: 'Could not save progress. Please try again.' };

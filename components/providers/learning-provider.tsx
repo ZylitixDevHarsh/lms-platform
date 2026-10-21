@@ -5,226 +5,512 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 
 import { sampleCourses, previewUser } from '@/data/sample-courses';
-import type { Course, Enrollment, PreviewUser } from '@/types';
-import type { AuthProfile } from '@/lib/get-profile';
 
-interface LearningContextValue {
+import type {
+  Course,
+  Enrollment,
+  PreviewUser,
+} from '@/types';
+
+import { enrollAction, setLessonCompleteAction } from '@/lib/db/learning';
+
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
+
+export type InitialLearningState = {
+  isAuthenticated: boolean;
+  user?: PreviewUser;
+
+  // Enrolled course IDs.
+  enrolledCourseIds: string[];
+
+  // Full enrollment records.
+  enrollments?: Enrollment[];
+
+  // { [courseId]: [completed lessonId, ...] }
+  completedByCourse: Record<string, string[]>;
+
+  // { [courseId]: total lessons in the course }
+  lessonTotals: Record<string, number>;
+};
+
+export type CourseProgress = {
+  completed: number;
+  total: number;
+  percent: number;
+};
+
+type LearningContextValue = {
+  // Authentication.
   user: PreviewUser;
   isAuthenticated: boolean;
-  enrollments: Enrollment[];
-  enrollmentsByCourse: Record<string, Enrollment>;
-  enroll: (courseId: string) => void;
-  unenroll: (courseId: string) => void;
-  isEnrolled: (courseId: string) => boolean;
-  markLessonComplete: (courseId: string, lessonId: string) => void;
-  markLessonIncomplete: (courseId: string, lessonId: string) => void;
-  isLessonComplete: (courseId: string, lessonId: string) => boolean;
-  getProgress: (courseId: string) => {
-    completed: number;
-    total: number;
-    percent: number;
-  };
-  enrolledCourses: Course[];
-  completedCoursesCount: number;
-  totalLessonsCompleted: number;
   signIn: () => void;
   signOut: () => void;
-}
 
-interface LearningProviderProps {
+  // Enrollment.
+  enrollments: Enrollment[];
+  enrollmentsByCourse: Record<string, Enrollment>;
+  enrolledCourseIds: string[];
+  enrolledCourses: Course[];
+
+  enroll: (courseId: string) => Promise<boolean>;
+  unenroll: (courseId: string) => Promise<boolean>;
+  isEnrolled: (courseId: string) => boolean;
+
+  // Lesson progress.
+  getProgress: (courseId: string) => CourseProgress;
+  isLessonComplete: (courseId: string, lessonId: string) => boolean;
+  markLessonComplete: (
+    courseId: string,
+    lessonId: string,
+  ) => Promise<boolean>;
+  markLessonIncomplete: (
+    courseId: string,
+    lessonId: string,
+  ) => Promise<boolean>;
+
+  // Dashboard statistics.
+  completedCoursesCount: number;
+  totalLessonsCompleted: number;
+};
+
+type LearningProviderProps = {
   children: ReactNode;
-  initialUser: AuthProfile | null;
+  initial: InitialLearningState;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Context                                                                    */
+/* -------------------------------------------------------------------------- */
+
+const LearningContext = createContext<LearningContextValue | null>(null);
+
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function uniqueIds(ids: string[]): string[] {
+  return Array.from(new Set(ids));
 }
 
-const defaultEnrollments: Enrollment[] = [
-  {
-    courseId: 'c4',
-    enrolledAt: '2026-09-12',
-    completedLessonIds: ['c4-l1'],
-  },
-  {
-    courseId: 'c1',
-    enrolledAt: '2026-10-02',
-    completedLessonIds: ['c1-l1', 'c1-l2'],
-  },
-];
+function createEnrollment(
+  courseId: string,
+  completedLessonIds: string[] = [],
+): Enrollment {
+  return {
+    courseId,
+    enrolledAt: new Date().toISOString().slice(0, 10),
+    completedLessonIds,
+  };
+}
 
-const LearningContext = createContext<LearningContextValue | undefined>(
-  undefined
-);
+/* -------------------------------------------------------------------------- */
+/* Provider                                                                   */
+/* -------------------------------------------------------------------------- */
 
 export function LearningProvider({
+  initial,
   children,
-  initialUser,
 }: LearningProviderProps) {
-  // Use the Auth0 profile when authenticated; otherwise, use demo data.
-  const user: PreviewUser = initialUser
-    ? {
-      id: initialUser.id,
-      name: initialUser.name,
-      email: initialUser.email,
-      role: initialUser.role,
-      initials: initialUser.initials,
-    }
-    : previewUser;
-
-  const isAuthenticated = initialUser !== null;
-
-  const [enrollments, setEnrollments] =
-    useState<Enrollment[]>(defaultEnrollments);
-
-  const enrollmentsByCourse = useMemo(() => {
-    const map: Record<string, Enrollment> = {};
-
-    for (const enrollment of enrollments) {
-      map[enrollment.courseId] = enrollment;
-    }
-
-    return map;
-  }, [enrollments]);
-
-  const isEnrolled = useCallback(
-    (courseId: string) => Boolean(enrollmentsByCourse[courseId]),
-    [enrollmentsByCourse]
+  const [enrolled, setEnrolled] = useState<string[]>(() =>
+    uniqueIds(initial.enrolledCourseIds),
   );
 
-  const enroll = useCallback((courseId: string) => {
-    setEnrollments((prev) => {
-      if (prev.some((e) => e.courseId === courseId)) {
-        return prev;
+  const [enrollments, setEnrollments] = useState<Enrollment[]>(() => {
+    if (initial.enrollments) {
+      return initial.enrollments;
+    }
+
+    return initial.enrolledCourseIds.map((courseId) =>
+      createEnrollment(
+        courseId,
+        initial.completedByCourse[courseId] ?? [],
+      ),
+    );
+  });
+
+  const [completed, setCompleted] = useState<Record<string, string[]>>(
+    () => initial.completedByCourse,
+  );
+
+  // Prevent duplicate concurrent requests for the same operation.
+  const pendingEnrollments = useRef(new Set<string>());
+  const pendingUnenrollments = useRef(new Set<string>());
+  const pendingLessonUpdates = useRef(new Set<string>());
+
+  const user: PreviewUser = initial.user ?? previewUser;
+
+  const isAuthenticated = initial.isAuthenticated;
+
+  /* ------------------------------------------------------------------------ */
+  /* Enrollment lookup                                                        */
+  /* ------------------------------------------------------------------------ */
+
+  const enrollmentsByCourse = useMemo(
+    () =>
+      Object.fromEntries(
+        enrollments.map((enrollment) => [
+          enrollment.courseId,
+          enrollment,
+        ]),
+      ) as Record<string, Enrollment>,
+    [enrollments],
+  );
+
+  const isEnrolled = useCallback(
+    (courseId: string) => enrolled.includes(courseId),
+    [enrolled],
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /* Enroll                                                                   */
+  /* ------------------------------------------------------------------------ */
+
+  const enroll = useCallback(
+    async (courseId: string): Promise<boolean> => {
+      if (!isAuthenticated) {
+        window.location.assign('/auth/login');
+        return false;
       }
 
-      return [
-        ...prev,
-        {
-          courseId,
-          enrolledAt: new Date().toISOString().slice(0, 10),
-          completedLessonIds: [],
-        },
-      ];
-    });
-  }, []);
+      if (pendingEnrollments.current.has(courseId)) {
+        return false;
+      }
 
-  const unenroll = useCallback((courseId: string) => {
-    setEnrollments((prev) =>
-      prev.filter((e) => e.courseId !== courseId)
-    );
-  }, []);
+      if (pendingUnenrollments.current.has(courseId)) {
+        return false;
+      }
+
+      if (enrolled.includes(courseId)) {
+        return true;
+      }
+
+      pendingEnrollments.current.add(courseId);
+
+      const previousEnrollments = enrollments;
+      const previousEnrolled = enrolled;
+
+      const newEnrollment = createEnrollment(
+        courseId,
+        completed[courseId] ?? [],
+      );
+
+      // Optimistic UI update.
+      setEnrolled((prev) =>
+        prev.includes(courseId) ? prev : [courseId, ...prev],
+      );
+
+      setEnrollments((prev) =>
+        prev.some((item) => item.courseId === courseId)
+          ? prev
+          : [newEnrollment, ...prev],
+      );
+
+      try {
+        const result = await enrollAction(courseId);
+
+        if (!result.ok) {
+          setEnrolled(previousEnrolled);
+          setEnrollments(previousEnrollments);
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Failed to enroll in course:', error);
+
+        setEnrolled(previousEnrolled);
+        setEnrollments(previousEnrollments);
+
+        return false;
+      } finally {
+        pendingEnrollments.current.delete(courseId);
+      }
+    },
+    [isAuthenticated, enrolled, enrollments, completed],
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /* Unenroll                                                                 */
+  /* ------------------------------------------------------------------------ */
+
+  const unenroll = useCallback(
+    async (courseId: string): Promise<boolean> => {
+      if (!isAuthenticated) {
+        window.location.assign('/auth/login');
+        return false;
+      }
+
+      if (pendingUnenrollments.current.has(courseId)) {
+        return false;
+      }
+
+      if (pendingEnrollments.current.has(courseId)) {
+        return false;
+      }
+
+      if (!enrolled.includes(courseId)) {
+        return true;
+      }
+
+      pendingUnenrollments.current.add(courseId);
+
+      const previousEnrolled = enrolled;
+      const previousEnrollments = enrollments;
+
+      // Optimistically remove the enrollment.
+      setEnrolled((prev) => prev.filter((id) => id !== courseId));
+
+      setEnrollments((prev) =>
+        prev.filter((item) => item.courseId !== courseId),
+      );
+
+      try {
+        const result = await enrollAction(courseId);
+
+        if (!result.ok) {
+          setEnrolled(previousEnrolled);
+          setEnrollments(previousEnrollments);
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Failed to unenroll from course:', error);
+
+        setEnrolled(previousEnrolled);
+        setEnrollments(previousEnrollments);
+
+        return false;
+      } finally {
+        pendingUnenrollments.current.delete(courseId);
+      }
+    },
+    [isAuthenticated, enrolled, enrollments],
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /* Lesson completion                                                        */
+  /* ------------------------------------------------------------------------ */
 
   const isLessonComplete = useCallback(
     (courseId: string, lessonId: string) =>
-      Boolean(
-        enrollmentsByCourse[courseId]?.completedLessonIds.includes(lessonId)
-      ),
-    [enrollmentsByCourse]
+      completed[courseId]?.includes(lessonId) ?? false,
+    [completed],
+  );
+
+  const setComplete = useCallback(
+    async (
+      courseId: string,
+      lessonId: string,
+      complete: boolean,
+    ): Promise<boolean> => {
+      if (!isAuthenticated) {
+        window.location.assign('/auth/login');
+        return false;
+      }
+
+      const operationKey = `${courseId}:${lessonId}`;
+
+      if (pendingLessonUpdates.current.has(operationKey)) {
+        return false;
+      }
+
+      const wasComplete =
+        completed[courseId]?.includes(lessonId) ?? false;
+
+      if (wasComplete === complete) {
+        return true;
+      }
+
+      pendingLessonUpdates.current.add(operationKey);
+
+      const previousCompleted = completed;
+      const previousEnrolled = enrolled;
+      const previousEnrollments = enrollments;
+
+      const updateLocalProgress = (shouldComplete: boolean) => {
+        setCompleted((prev) => {
+          const current = prev[courseId] ?? [];
+
+          const next = shouldComplete
+            ? current.includes(lessonId)
+              ? current
+              : [...current, lessonId]
+            : current.filter((id) => id !== lessonId);
+
+          return {
+            ...prev,
+            [courseId]: next,
+          };
+        });
+
+        setEnrollments((prev) => {
+          const existing = prev.find(
+            (item) => item.courseId === courseId,
+          );
+
+          if (existing) {
+            return prev.map((item) =>
+              item.courseId === courseId
+                ? {
+                  ...item,
+                  completedLessonIds: shouldComplete
+                    ? uniqueIds([
+                      ...item.completedLessonIds,
+                      lessonId,
+                    ])
+                    : item.completedLessonIds.filter(
+                      (id) => id !== lessonId,
+                    ),
+                }
+                : item,
+            );
+          }
+
+          // Preserve the original behavior: completing a lesson
+          // implicitly creates an enrollment.
+          if (shouldComplete) {
+            return [
+              ...prev,
+              createEnrollment(courseId, [lessonId]),
+            ];
+          }
+
+          return prev;
+        });
+
+        if (shouldComplete) {
+          setEnrolled((prev) =>
+            prev.includes(courseId) ? prev : [courseId, ...prev],
+          );
+        }
+      };
+
+      // Optimistically update the UI.
+      updateLocalProgress(complete);
+
+      try {
+        const result = await setLessonCompleteAction(
+          courseId,
+          lessonId,
+          complete,
+        );
+
+        if (!result.ok) {
+          setCompleted(previousCompleted);
+          setEnrolled(previousEnrolled);
+          setEnrollments(previousEnrollments);
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Failed to update lesson progress:', error);
+
+        setCompleted(previousCompleted);
+        setEnrolled(previousEnrolled);
+        setEnrollments(previousEnrollments);
+
+        return false;
+      } finally {
+        pendingLessonUpdates.current.delete(operationKey);
+      }
+    },
+    [isAuthenticated, enrolled, completed, enrollments],
   );
 
   const markLessonComplete = useCallback(
-    (courseId: string, lessonId: string) => {
-      setEnrollments((prev) => {
-        const existing = prev.find((e) => e.courseId === courseId);
-
-        if (existing) {
-          if (existing.completedLessonIds.includes(lessonId)) {
-            return prev;
-          }
-
-          return prev.map((e) =>
-            e.courseId === courseId
-              ? {
-                ...e,
-                completedLessonIds: [
-                  ...e.completedLessonIds,
-                  lessonId,
-                ],
-              }
-              : e
-          );
-        }
-
-        return [
-          ...prev,
-          {
-            courseId,
-            enrolledAt: new Date().toISOString().slice(0, 10),
-            completedLessonIds: [lessonId],
-          },
-        ];
-      });
-    },
-    []
+    (courseId: string, lessonId: string) =>
+      setComplete(courseId, lessonId, true),
+    [setComplete],
   );
 
   const markLessonIncomplete = useCallback(
-    (courseId: string, lessonId: string) => {
-      setEnrollments((prev) =>
-        prev.map((e) =>
-          e.courseId === courseId
-            ? {
-              ...e,
-              completedLessonIds: e.completedLessonIds.filter(
-                (id) => id !== lessonId
-              ),
-            }
-            : e
-        )
-      );
-    },
-    []
+    (courseId: string, lessonId: string) =>
+      setComplete(courseId, lessonId, false),
+    [setComplete],
   );
+
+  /* ------------------------------------------------------------------------ */
+  /* Progress                                                                 */
+  /* ------------------------------------------------------------------------ */
 
   const getProgress = useCallback(
-    (courseId: string) => {
-      const course = sampleCourses.find((c) => c.id === courseId);
-      const total = course?.lessons?.length ?? 0;
+    (courseId: string): CourseProgress => {
+      const total = initial.lessonTotals[courseId] ?? 0;
+      const completedCount = completed[courseId]?.length ?? 0;
 
-      const completed =
-        enrollmentsByCourse[courseId]?.completedLessonIds.length ?? 0;
+      // Guard against invalid or stale lesson IDs.
+      const done = Math.min(completedCount, total);
 
       const percent =
-        total > 0 ? Math.round((completed / total) * 100) : 0;
+        total > 0
+          ? Math.min(100, Math.round((done / total) * 100))
+          : 0;
 
-      return { completed, total, percent };
+      return {
+        completed: done,
+        total,
+        percent,
+      };
     },
-    [enrollmentsByCourse]
+    [completed, initial.lessonTotals],
   );
+
+  /* ------------------------------------------------------------------------ */
+  /* Course list                                                               */
+  /* ------------------------------------------------------------------------ */
 
   const enrolledCourses = useMemo(
     () =>
-      enrollments
-        .map((e) => sampleCourses.find((c) => c.id === e.courseId))
-        .filter((c): c is Course => Boolean(c)),
-    [enrollments]
+      enrolled
+        .map((courseId) =>
+          sampleCourses.find((course) => course.id === courseId),
+        )
+        .filter((course): course is Course => Boolean(course)),
+    [enrolled],
   );
+
+  /* ------------------------------------------------------------------------ */
+  /* Dashboard statistics                                                     */
+  /* ------------------------------------------------------------------------ */
 
   const completedCoursesCount = useMemo(
     () =>
-      enrollments.filter((e) => {
-        const course = sampleCourses.find((c) => c.id === e.courseId);
+      enrolled.filter((courseId) => {
+        const total = initial.lessonTotals[courseId] ?? 0;
+        const completedCount = completed[courseId]?.length ?? 0;
 
-        return (
-          course !== undefined &&
-          e.completedLessonIds.length === course.lessons?.length
-        );
+        return total > 0 && completedCount >= total;
       }).length,
-    [enrollments]
+    [enrolled, completed, initial.lessonTotals],
   );
 
   const totalLessonsCompleted = useMemo(
     () =>
-      enrollments.reduce(
-        (sum, e) => sum + e.completedLessonIds.length,
-        0
+      enrolled.reduce(
+        (sum, courseId) =>
+          sum + Math.min(
+            completed[courseId]?.length ?? 0,
+            initial.lessonTotals[courseId] ?? 0,
+          ),
+        0,
       ),
-    [enrollments]
+    [enrolled, completed, initial.lessonTotals],
   );
 
-  // Auth0 handles the actual sign-in and sign-out flows.
+  /* ------------------------------------------------------------------------ */
+  /* Auth0 navigation                                                         */
+  /* ------------------------------------------------------------------------ */
+
   const signIn = useCallback(() => {
     window.location.assign('/auth/login');
   }, []);
@@ -233,24 +519,54 @@ export function LearningProvider({
     window.location.assign('/auth/logout');
   }, []);
 
-  const value: LearningContextValue = {
-    user,
-    isAuthenticated,
-    enrollments,
-    enrollmentsByCourse,
-    enroll,
-    unenroll,
-    isEnrolled,
-    markLessonComplete,
-    markLessonIncomplete,
-    isLessonComplete,
-    getProgress,
-    enrolledCourses,
-    completedCoursesCount,
-    totalLessonsCompleted,
-    signIn,
-    signOut,
-  };
+  /* ------------------------------------------------------------------------ */
+  /* Context value                                                            */
+  /* ------------------------------------------------------------------------ */
+
+  const value = useMemo<LearningContextValue>(
+    () => ({
+      user,
+      isAuthenticated,
+      signIn,
+      signOut,
+
+      enrollments,
+      enrollmentsByCourse,
+      enrolledCourseIds: enrolled,
+      enrolledCourses,
+
+      enroll,
+      unenroll,
+      isEnrolled,
+
+      getProgress,
+      isLessonComplete,
+      markLessonComplete,
+      markLessonIncomplete,
+
+      completedCoursesCount,
+      totalLessonsCompleted,
+    }),
+    [
+      user,
+      isAuthenticated,
+      signIn,
+      signOut,
+      enrollments,
+      enrollmentsByCourse,
+      enrolled,
+      enrolledCourses,
+      enroll,
+      unenroll,
+      isEnrolled,
+      getProgress,
+      isLessonComplete,
+      markLessonComplete,
+      markLessonIncomplete,
+      completedCoursesCount,
+      totalLessonsCompleted,
+    ],
+  );
 
   return (
     <LearningContext.Provider value={value}>
@@ -259,12 +575,18 @@ export function LearningProvider({
   );
 }
 
-export function useLearning() {
-  const ctx = useContext(LearningContext);
+/* -------------------------------------------------------------------------- */
+/* Hook                                                                       */
+/* -------------------------------------------------------------------------- */
 
-  if (!ctx) {
-    throw new Error('useLearning must be used within a LearningProvider');
+export function useLearning(): LearningContextValue {
+  const context = useContext(LearningContext);
+
+  if (!context) {
+    throw new Error(
+      'useLearning must be used inside <LearningProvider>',
+    );
   }
 
-  return ctx;
+  return context;
 }

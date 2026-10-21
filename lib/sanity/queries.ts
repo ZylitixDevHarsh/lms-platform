@@ -57,3 +57,18 @@ export const COURSE_DETAIL_QUERY = groq`
     }
   }
 `;
+
+export const FEATURED_COURSE_LIST_QUERY = groq`
+  *[_type == "course" && defined(slug.current) && featured == true] | order(title asc) {
+    _id,
+    title,
+    "slug": slug.current,
+    shortDescription,
+    image,
+    level,
+    featured,
+    instructorName,
+    instructorAvatar,
+    "category": category->{title, "slug": slug.current}
+  }
+`;

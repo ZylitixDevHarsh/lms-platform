@@ -24,12 +24,9 @@ export function EnrollButton({ course }: EnrollButtonProps) {
 
   const enrolled = isEnrolled(course.id);
   const progress = getProgress(course.id);
-  const firstLesson = course.lessons[0];
-  const firstIncomplete = course.lessons.find(
-    (l) => !progress.completed || !enrolled
-  );
+  const firstLesson = course.lessons ? course.lessons[0] : [];
   const resumeLesson =
-    course.lessons.find((l, i) => {
+    course.lessons?.find((l, i) => {
       const completed = enrolled && i < progress.completed;
       return !completed;
     }) ?? firstLesson;

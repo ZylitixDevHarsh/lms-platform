@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 import type { Category } from '@/types';
 
 interface CategoryBadgeProps {
-  category: Category;
+  category?: Category;
   className?: string;
   variant?: 'solid' | 'soft' | 'outline';
 }
@@ -19,7 +19,7 @@ export function CategoryBadge({
         variant === 'solid' && 'bg-foreground text-background',
         variant === 'soft' && 'bg-secondary text-secondary-foreground',
         variant === 'outline' &&
-          'border border-border text-muted-foreground',
+        'border border-border text-muted-foreground',
         className
       )}
     >

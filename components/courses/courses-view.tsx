@@ -34,7 +34,7 @@ export function CoursesView({
       return (
         c.title.toLowerCase().includes(q) ||
         c.description.toLowerCase().includes(q) ||
-        c.category.toLowerCase().includes(q) ||
+        c.category?.toLowerCase().includes(q) ||
         c.instructor.name.toLowerCase().includes(q)
       );
     });

@@ -1,3 +1,5 @@
+import { PortableTextBlock } from "next-sanity";
+
 export type Difficulty = 'Beginner' | 'Intermediate' | 'Advanced';
 
 export type Category =
@@ -14,8 +16,8 @@ export interface Lesson {
   id: string;
   slug: string;
   title: string;
-  duration: string;
-  summary: string;
+  type: "video" | "article";
+  durationMinutes: number | undefined;
   content: LessonContentBlock[];
 }
 
@@ -33,12 +35,12 @@ export interface Course {
   slug: string;
   title: string;
   description: string;
-  longDescription?: string;
-  category: Category;
+  longDescription?: PortableTextBlock[];
+  category?: Category;
   thumbnail: string;
   instructor: {
     name: string;
-    title: string;
+    title?: string;
     avatar: string;
   };
   difficulty: Difficulty;
@@ -46,6 +48,7 @@ export interface Course {
   objectives?: string[];
   lessons?: Lesson[];
   featured?: boolean;
+  modules?: { title: string, lessons?: Lesson[] }[];
 }
 
 export interface Enrollment {
@@ -78,3 +81,41 @@ export const DIFFICULTIES: Difficulty[] = [
   'Intermediate',
   'Advanced',
 ];
+
+
+export type SanitySpan = {
+  _type: 'span';
+  _key?: string;
+  text: string;
+  marks?: string[];
+};
+
+export type SanityPortableTextBlock = {
+  _type: 'block';
+  _key?: string;
+  style?: string;
+  listItem?: 'bullet' | 'number';
+  children?: SanitySpan[];
+  markDefs?: Array<{
+    _key: string;
+    _type: string;
+    href?: string;
+    [key: string]: unknown;
+  }>;
+};
+
+export type SanityContentItem =
+  | SanityPortableTextBlock
+  | { _type: 'image';[key: string]: unknown }
+  | { _type: 'code';[key: string]: unknown };
+
+
+export type SanityLesson = {
+  _id: string;
+  title: string;
+  slug: string;
+  type: 'video' | 'article';
+  durationMinutes?: number;
+  videoUrl?: string;
+  content?: SanityContentItem[];
+} | null;

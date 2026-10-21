@@ -2,32 +2,58 @@ import { client } from '@/lib/sanity/client';
 import { urlFor } from '@/lib/sanity/image';
 import { CoursesView } from '@/components/courses/courses-view';
 import { CATEGORY_LIST_QUERY, COURSE_LIST_QUERY } from '@/lib/sanity/queries';
+import { PortableTextBlock } from 'next-sanity';
+import { CATEGORIES, Category, Course, DIFFICULTIES, Difficulty, Lesson, SanityContentItem } from '@/types';
+import { mapLessonContent } from '@/lib/mappers/lesson-content';
 
 // Re-fetch from Sanity at most once a minute.
 const REVALIDATE = { next: { revalidate: 60 } };
 
-const LEVEL_LABELS = {
-  beginner: 'Beginner',
-  intermediate: 'Intermediate',
-  advanced: 'Advanced',
-} as const;
+type SanityLesson = {
+  _id: string;
+  title: string;
+  slug: string;
+  type: 'video' | 'article';
+  durationMinutes?: number;
+  content?: SanityContentItem[];
+  videoUrl?: string;
+} | null;
+
+type SanityModule = {
+  title: string;
+  lessons?: SanityLesson[];
+};
 
 type SanityCourse = {
   _id: string;
   title: string;
   slug: string;
-  shortDescription: string;
+  shortDescription?: string;
+  longDescription?: PortableTextBlock[];
   image?: Parameters<typeof urlFor>[0];
-  level?: keyof typeof LEVEL_LABELS;
+  level?: string;
   instructorName?: string;
-  instructorAvatar?: string;
-  category?: { title: string; slug: string };
+  instructorTitle?: string;
+  instructorAvatar?: Parameters<typeof urlFor>[0];
+  category?: {
+    title: string;
+    slug: string;
+  };
+  duration?: string;
+  objectives?: string[];
+  featured?: boolean;
+  modules?: SanityModule[];
 };
 
+function isCategory(value: string | undefined): value is Category {
+  return CATEGORIES.some((category) => category === value);
+}
+
+function isDifficulty(value: string | undefined): value is Difficulty {
+  return DIFFICULTIES.some((difficulty) => difficulty === value);
+}
+
 export default async function CoursesPage() {
-  const startTime = Date.now();
-
-
   const [raw, categories] = await Promise.all([
     client.fetch<SanityCourse[]>(COURSE_LIST_QUERY, {}, REVALIDATE),
     client.fetch<{ title: string }[]>(CATEGORY_LIST_QUERY, {}, REVALIDATE),
@@ -35,22 +61,69 @@ export default async function CoursesPage() {
 
   // Map Sanity documents to the shape your UI already uses.
   // Rename keys here if your `Course` type differs.
-  const courses = raw.map((c) => ({
+  const courses: Course[] = raw.map((c) => ({
     id: c._id,
     slug: c.slug,
     title: c.title,
-    description: c.shortDescription,
-    category: c.category?.title ?? 'Uncategorised',
-    difficulty: LEVEL_LABELS[c.level ?? 'beginner'],
+    description: c.shortDescription ?? '',
+
+    longDescription: c.longDescription,
+
+    category: isCategory(c.category?.title)
+      ? c.category?.title
+      : undefined,
+
+    difficulty: isDifficulty(c.level) ? c.level : 'Beginner',
+
+    thumbnail: c.image
+      ? urlFor(c.image).width(800).height(450).url()
+      : '',
+
     instructor: {
       name: c.instructorName ?? 'Unknown instructor',
+      title: c.instructorTitle,
       avatar: c.instructorAvatar
         ? urlFor(c.instructorAvatar).width(96).height(96).url()
-        : undefined,
-      title: ''
+        : '',
     },
-    thumbnail: c.image ? urlFor(c.image).width(800).height(450).url() : '',
+
+    duration: c.duration,
+    objectives: c.objectives,
+    featured: c.featured,
+
+    modules: (c.modules ?? []).map((m) => ({
+      title: m.title,
+
+      lessons: (m.lessons ?? [])
+        .filter((l): l is NonNullable<typeof l> => l !== null)
+        .map(
+          (l): Lesson => ({
+            id: l._id,
+            slug: l.slug,
+            title: l.title,
+            type: l.type,
+            durationMinutes: l.durationMinutes,
+            content: mapLessonContent(l.content),
+          }),
+        ),
+    })),
+
+    lessons: (c.modules ?? []).flatMap((m) =>
+      (m.lessons ?? [])
+        .filter((l): l is NonNullable<typeof l> => l !== null)
+        .map(
+          (l): Lesson => ({
+            id: l._id,
+            slug: l.slug,
+            title: l.title,
+            type: l.type,
+            durationMinutes: l.durationMinutes,
+            content: mapLessonContent(l.content),
+          }),
+        ),
+    ),
   }));
+  console.log('-------', courses.length);
 
   return (
     <CoursesView

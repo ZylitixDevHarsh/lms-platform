@@ -181,7 +181,7 @@ export function LearningProvider({
   const getProgress = useCallback(
     (courseId: string) => {
       const course = sampleCourses.find((c) => c.id === courseId);
-      const total = course?.lessons.length ?? 0;
+      const total = course?.lessons?.length ?? 0;
 
       const completed =
         enrollmentsByCourse[courseId]?.completedLessonIds.length ?? 0;
@@ -209,7 +209,7 @@ export function LearningProvider({
 
         return (
           course !== undefined &&
-          e.completedLessonIds.length === course.lessons.length
+          e.completedLessonIds.length === course.lessons?.length
         );
       }).length,
     [enrollments]

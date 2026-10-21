@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 interface LessonListItemProps {
   href: string;
   title: string;
-  duration: string;
+  duration?: string;
   index: number;
   status?: 'completed' | 'in-progress' | 'not-started';
   className?: string;

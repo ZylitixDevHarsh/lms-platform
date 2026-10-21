@@ -19,7 +19,8 @@ import { EnrollButton } from '@/components/courses/enroll-button';
 import { client } from '@/lib/sanity/client';
 import { urlFor } from '@/lib/sanity/image';
 import { COURSE_DETAIL_QUERY, COURSE_SLUGS_QUERY } from '@/lib/sanity/queries';
-import type { Course } from '@/types';
+import type { Category, Course, Lesson, SanityLesson } from '@/types';
+import { mapLessonContent } from '@/lib/mappers/lesson-content';
 
 // Re-fetch from Sanity at most once a minute.
 const REVALIDATE = { next: { revalidate: 60 } };
@@ -30,13 +31,7 @@ const LEVEL_LABELS = {
   advanced: 'Advanced',
 } as const;
 
-type SanityLesson = {
-  _id: string;
-  title: string;
-  slug: string;
-  type: 'video' | 'article';
-  durationMinutes?: number;
-} | null; // null = broken reference (e.g. lesson not published yet)
+
 
 type SanityCourseDetail = {
   _id: string;
@@ -51,7 +46,7 @@ type SanityCourseDetail = {
   instructorName?: string;
   instructorTitle?: string;
   instructorAvatar?: Parameters<typeof urlFor>[0];
-  category?: string;
+  category?: Category;
   lessonCount?: number;
   totalMinutes?: number | null;
   modules?: { title: string; lessons?: SanityLesson[] }[];
@@ -79,16 +74,16 @@ async function getCourse(slug: string): Promise<Course | null> {
     title: c.title,
     description: c.shortDescription,
     longDescription: c.description,
-    category: c.category ?? 'Uncategorised',
+    category: c.category,
     thumbnail: c.image
       ? urlFor(c.image).width(1200).height(675).url()
-      : undefined,
+      : '',
     instructor: {
       name: c.instructorName ?? 'Unknown instructor',
       title: c.instructorTitle,
       avatar: c.instructorAvatar
         ? urlFor(c.instructorAvatar).width(96).height(96).url()
-        : undefined,
+        : '',
     },
     difficulty: LEVEL_LABELS[c.level ?? 'beginner'],
     duration: formatMinutes(c.totalMinutes),
@@ -98,12 +93,13 @@ async function getCourse(slug: string): Promise<Course | null> {
       title: m.title,
       lessons: (m.lessons ?? [])
         .filter((l): l is NonNullable<SanityLesson> => l !== null)
-        .map((l) => ({
+        .map((l): Lesson => ({
           id: l._id,
           slug: l.slug,
           title: l.title,
           type: l.type,
           durationMinutes: l.durationMinutes,
+          content: mapLessonContent(l.content),
         })),
     })),
   };
@@ -123,13 +119,13 @@ export default async function CourseDetailPage({
   const course = await getCourse(slug);
   if (!course) notFound();
 
-  const lessonCount = course.modules.reduce((n, m) => n + m.lessons.length, 0);
+  const lessonCount = course?.modules?.reduce((n, m) => n + (m.lessons?.length ?? 0), 0);
   // Running lesson number across modules (module 2 continues from module 1).
-  const modules = course.modules.map((m, i) => ({
+  const modules = course?.modules?.map((m, i, allModules) => ({
     ...m,
-    startIndex: course.modules
+    startIndex: allModules
       .slice(0, i)
-      .reduce((n, prev) => n + prev.lessons.length, 0),
+      .reduce((n, prev) => n + (prev.lessons?.length ?? 0), 0),
   }));
 
   return (
@@ -240,7 +236,7 @@ export default async function CourseDetailPage({
               </Card>
             )}
 
-            {course.objectives.length > 0 && (
+            {(course.objectives?.length ?? 0) > 0 && (
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-2">
@@ -252,7 +248,7 @@ export default async function CourseDetailPage({
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2.5">
-                    {course.objectives.map((obj, i) => (
+                    {course.objectives?.map((obj, i) => (
                       <li key={i} className="flex gap-2.5 text-sm">
                         <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary">
                           {i + 1}
@@ -290,7 +286,7 @@ export default async function CourseDetailPage({
             </div>
 
             <div className="space-y-4">
-              {modules.map((module) => (
+              {modules?.map((module) => (
                 <div
                   key={module.title}
                   className="rounded-lg border border-border bg-card p-2"
@@ -299,7 +295,7 @@ export default async function CourseDetailPage({
                     {module.title}
                   </p>
                   <div className="space-y-1">
-                    {module.lessons.map((lesson, i) => (
+                    {module.lessons?.map((lesson, i) => (
                       <LessonListItem
                         key={lesson.id}
                         href={`/learn/${course.slug}/${lesson.slug}`}

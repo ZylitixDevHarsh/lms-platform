@@ -1,7 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
-import { Toaster } from '@/components/ui/toaster';
 import { AppProviders } from '@/components/providers/app-providers';
 import { getProfile } from '@/lib/get-profile';
 

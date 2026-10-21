@@ -767,7 +767,7 @@ export function getLessonBySlug(
 ): { course: Course; lessonIndex: number } | undefined {
   const course = getCourseBySlug(courseSlug);
   if (!course) return undefined;
-  const lessonIndex = course.lessons.findIndex((l) => l.slug === lessonSlug);
+  const lessonIndex = course.lessons?.findIndex((l) => l.slug === lessonSlug) ?? -1;
   if (lessonIndex < 0) return undefined;
   return { course, lessonIndex };
 }

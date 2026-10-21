@@ -11,7 +11,9 @@ export const COURSE_LIST_QUERY = groq`
     level,
     instructorName,
     instructorAvatar,
-    "category": category->{title, "slug": slug.current}
+    "category": category->{title, "slug": slug.current},
+    "moduleTitles": modules[].title,
+    "lessonTitles": modules[].lessons[]->title
   }
 `;
 

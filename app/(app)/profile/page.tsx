@@ -8,14 +8,16 @@ import {
   BookOpen,
   CheckCircle2,
   ArrowRight,
-  Info,
+  Sparkles,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
+import { CourseCard } from '@/components/courses/course-card';
+import { EmptyState } from '@/components/common/empty-state';
 import { useLearning } from '@/components/providers/learning-provider';
 
 export default function ProfilePage() {
@@ -25,7 +27,12 @@ export default function ProfilePage() {
     enrolledCourses,
     completedCoursesCount,
     totalLessonsCompleted,
+    getProgress,
   } = useLearning();
+
+  const progressByCourse = Object.fromEntries(
+    enrolledCourses.map((course) => [course.id, getProgress(course.id)]),
+  );
 
   return (
     <PageContainer className="py-6 sm:py-10">
@@ -71,23 +78,54 @@ export default function ProfilePage() {
         />
       </div>
 
-      <Card className="mt-6">
-        <CardContent className="p-5 sm:p-6">
-          <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <div className="text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">Development preview</p>
-              <p className="mt-1">
-                You are viewing sample account data. When Auth0 is connected,
-                this page will display your authenticated profile and learning
-                records.
-              </p>
-            </div>
+      <section className="mt-8">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
+              Enrolled courses
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Courses you have started, with your current progress.
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          {enrolledCourses.length > 0 && (
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard">
+                View dashboard
+                <ArrowRight className="ml-1.5 h-4 w-4" />
+              </Link>
+            </Button>
+          )}
+        </div>
 
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+        {enrolledCourses.length === 0 ? (
+          <EmptyState
+            icon={<Sparkles className="h-6 w-6" />}
+            title="No courses yet"
+            description="You have not enrolled in any courses. Explore the catalogue to find your first one."
+            action={
+              <Button asChild>
+                <Link href="/courses">
+                  Explore Courses
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Link>
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+            {enrolledCourses.map((course) => (
+              <CourseCard
+                key={course.id}
+                course={course}
+                progress={progressByCourse[course.id]}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
         <Button asChild variant="outline">
           <Link href="/dashboard">
             Go to Dashboard
@@ -99,7 +137,7 @@ export default function ProfilePage() {
           className="text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={() => signOut()}
         >
-          <LogOut className="mr-2 h-4 w-4" onClick={signOut} />
+          <LogOut className="mr-2 h-4 w-4" />
           Sign out
         </Button>
       </div>

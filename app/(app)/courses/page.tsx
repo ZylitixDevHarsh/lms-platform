@@ -43,6 +43,8 @@ type SanityCourse = {
   objectives?: string[];
   featured?: boolean;
   modules?: SanityModule[];
+  lessonTitles?: (string | null)[];
+  moduleTitles?: (string | null)[];
 };
 
 function isCategory(value: string | undefined): value is Category {
@@ -90,6 +92,12 @@ export default async function CoursesPage() {
     duration: c.duration,
     objectives: c.objectives,
     featured: c.featured,
+    lessonTitles: (c.lessonTitles ?? []).filter(
+      (title): title is string => Boolean(title),
+    ),
+    moduleTitles: (c.moduleTitles ?? []).filter(
+      (title): title is string => Boolean(title),
+    ),
 
     modules: (c.modules ?? []).map((m) => ({
       title: m.title,

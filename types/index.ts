@@ -50,6 +50,8 @@ export interface Course {
   lessons?: Lesson[];
   featured?: boolean;
   modules?: { title: string, lessons?: Lesson[] }[];
+  lessonTitles?: string[];
+  moduleTitles?: string[];
 }
 
 export interface Enrollment {

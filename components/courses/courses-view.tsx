@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { SearchX, SlidersHorizontal } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
@@ -9,6 +9,7 @@ import { SearchInput } from '@/components/courses/search-input';
 import { FilterChips } from '@/components/courses/filter-chips';
 import { EmptyState } from '@/components/common/empty-state';
 import { Button } from '@/components/ui/button';
+import { useCourseSearch } from '@/hooks/use-course-search';
 import { useLearning } from '@/components/providers/learning-provider';
 import { DIFFICULTIES, type Course, type Difficulty } from '@/types';
 
@@ -22,25 +23,17 @@ export function CoursesView({
   courses: Course[];
   categories: string[];
 }) {
-  const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('All');
   const [difficulty, setDifficulty] = useState<DifficultyFilter>('All');
   const { isEnrolled, getProgress } = useLearning();
+  const { query, setQuery, results, searching, algoliaEnabled } =
+    useCourseSearch(courses);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return courses.filter((c) => {
-      if (category !== 'All' && c.category !== category) return false;
-      if (difficulty !== 'All' && c.difficulty !== difficulty) return false;
-      if (!q) return true;
-      return (
-        c.title.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q) ||
-        c.category?.toLowerCase().includes(q) ||
-        c.instructor.name.toLowerCase().includes(q)
-      );
-    });
-  }, [courses, query, category, difficulty]);
+  const filtered = results.filter((c) => {
+    if (category !== 'All' && c.category !== category) return false;
+    if (difficulty !== 'All' && c.difficulty !== difficulty) return false;
+    return true;
+  });
 
   const hasFilters = query || category !== 'All' || difficulty !== 'All';
 
@@ -62,7 +55,7 @@ export function CoursesView({
         <SearchInput
           value={query}
           onChange={setQuery}
-          placeholder="Search by title, topic, or instructor..."
+          placeholder="Search courses and lessons..."
           autoFocus
         />
 
@@ -100,6 +93,8 @@ export function CoursesView({
           </span>{' '}
           {filtered.length === 1 ? 'course' : 'courses'}
           {hasFilters && ' found'}
+          {searching && ' · searching'}
+          {algoliaEnabled && query.trim() && ' · including lessons'}
         </p>
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={clearAll}>

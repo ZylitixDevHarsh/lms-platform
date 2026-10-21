@@ -22,13 +22,14 @@ export interface Lesson {
 }
 
 export type LessonContentBlock =
-  | { type: 'heading'; text: string }
   | { type: 'paragraph'; text: string }
-  | { type: 'list'; ordered?: boolean; items: string[] }
+  | { type: 'heading'; text: string; level?: number }
   | { type: 'quote'; text: string }
-  | { type: 'callout'; tone: 'info' | 'warning' | 'success'; text: string }
-  | { type: 'video'; title: string; duration: string }
-  | { type: 'link'; label: string; href: string };
+  | { type: 'list'; ordered: boolean; items: string[] }
+  | { type: 'link'; label: string; href: string }
+  | { type: 'markdown'; text: string }
+  | { type: 'code'; code: string; language?: string };
+
 
 export interface Course {
   id: string;

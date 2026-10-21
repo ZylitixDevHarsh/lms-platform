@@ -6,7 +6,6 @@ import { PageContainer } from '@/components/layout/page-container';
 import { auth0 } from '@/lib/auth0';
 
 const trustPoints = [
-  { icon: ShieldCheck, label: 'Single sign-on via Auth0' },
   { icon: BookOpen, label: 'Progress synced across devices' },
   { icon: GraduationCap, label: 'Access to all enrolled courses' },
 ];
@@ -30,7 +29,7 @@ export default async function LoginPage({
   if (session) redirect(returnTo);
 
   const loginHref = `/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
-  const signupHref = `${loginHref}&screen_hint=signup`;
+  // const signupHref = `${loginHref}&screen_hint=signup`;
 
   return (
     <div className="flex min-h-[calc(100dvh-4rem)] items-center justify-center bg-secondary/30 px-4 py-10">
@@ -59,15 +58,15 @@ export default async function LoginPage({
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </a>
             </Button>
-            <p className="text-center text-sm text-muted-foreground">
-              New here?{' '}
-              <a
-                href={signupHref}
-                className="font-medium text-foreground hover:underline"
-              >
-                Create an account
-              </a>
-            </p>
+            {/* <p className="text-center text-sm text-muted-foreground"> */}
+            {/*   New here?{' '} */}
+            {/*   <a */}
+            {/*     href={signupHref} */}
+            {/*     className="font-medium text-foreground hover:underline" */}
+            {/*   > */}
+            {/*     Create an account */}
+            {/*   </a> */}
+            {/* </p> */}
           </div>
 
           <div className="mt-6 space-y-2 border-t border-border pt-5">
@@ -85,14 +84,14 @@ export default async function LoginPage({
             })}
           </div>
 
-          <div className="mt-6 text-center">
-            <Link
-              href="/courses"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground"
-            >
-              Browse courses without signing in
-            </Link>
-          </div>
+          {/* <div className="mt-6 text-center"> */}
+          {/*   <Link */}
+          {/*     href="/courses" */}
+          {/*     className="text-sm font-medium text-muted-foreground hover:text-foreground" */}
+          {/*   > */}
+          {/*     Browse courses without signing in */}
+          {/*   </Link> */}
+          {/* </div> */}
         </div>
       </PageContainer>
     </div>
